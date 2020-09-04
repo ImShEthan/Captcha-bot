@@ -1,83 +1,109 @@
 
 // - Declaration des dépendences
-const Captcha = require("@haileybot/captcha-generator");
+const captchagen = require("captchagen")
 const Discord = require("discord.js")
 fs = require("fs"),
   path = require("path");
-// - Declaration du captcha
-let captcha = new Captcha();
-captcha.PNGStream.pipe(fs.createWriteStream(path.join(__dirname, `${captcha.value}.png`)));
+
 
 // - Declaration du Client
 const client = new Discord.Client()
 
 // - Declaration de tout ce qui serra utile
 const logsid = "744326517915648091"
-const captchaID = "744326517131182111"
-const rolename = "Arrivant pixa"
-const owner = "654754795336237058" 
+
+
 
 
 client.on('ready', () => console.log(`Connecté en tant que ${client.user.tag}`));
 
-client.on('message', async message => {
-  if(message.channel.id !== captchaID) return;
-  if(message.content === "!verifmsg") {
-    message.delete()
-    if (message.author.id !== owner) return;
-    let embed = new Discord.MessageEmbed()
-    .setTitle(`Bienvenue sur ${message.guild.name} !`)
-    .setDescription(`Afin d'avoir accès au reste du serveur merci de faire **!verif** et de remplir le captcha.
-    **Si le captcha ne fonctionne pas merci de dm un membre du staff.**`)
-    .setFooter("Captcha-bot par Ethan.")
-    message.channel.send(embed)
-  }
-   if(message.content === "!verif") {
-    message.delete()
-    let captcha = new Captcha();
-    var captchamsg = await message.channel.send(
-      "**Veuillez entré le texte de l'image si dessous:**",
-      new Discord.MessageAttachment(captcha.PNGStream, "captcha.png")
-    )
-    let collector = message.channel.createMessageCollector(m => m.author.id === message.author.id);
-    
-    collector.on("collect", m => {
-      if (m.content.toUpperCase() === captcha.value) {
-        m.delete()
-        captchamsg.delete()
-          message.channel.send("Vous avez passez la verifications !").then(msg => {
-            msg.delete({ timeout: 10000 })
-          })
-          .catch(console.error);
-          // - Ajout du role
-          let role = message.guild.roles.cache.find(r => r.name === rolename)
-          let member = message.guild.member(message.author);
-          message.guild.member(member).roles.add(role)
-          // - Logs
-          let logs = new Discord.MessageEmbed()
-          .setTitle("Captcha logs")
-          .setDescription(`<${message.author.id}> a passé la verif, je lui ai donné le role (son id : ${message.author.id})`)
-          .setTimestamp()
-      client.channels.cache.get(logsid).send(logs)
+client.on('guildMemberAdd', async member => {
+  // - Declaration du channel logs
+  const channel = member.guild.channels.cache.find(channel => channel.name === "captcha");
+  // - Calcule de la date
+  let day = member.user.createdAt.getDate()
+        let month = 1 + member.user.createdAt.getMonth()
+        let year = member.user.createdAt.getFullYear()
+        function checkDays(date) {
+          let now = new Date();
+          let diff = now.getTime() - date.getTime();
+          let days = Math.floor(diff / 86400000);
+          return `Il y a ${days +(days == 1 ? " jour" : " jours")}`
       }
-      else {
-        m.delete(), captchamsg.delete(), message.channel.send("Verifications échoué.").then(msg => {
-        msg.delete({ timeout: 10000 })
-      })
-      .catch(console.error);
-      // - Logs
-      let logs = new Discord.MessageEmbed()
-      .setTitle("Captcha logs")
-      .setDescription(`<@${message.author.id}> a échoué la verif (son id : ${message.author.id})`)
-      .setTimestamp()
-      client.channels.cache.get(logsid).send(logs)
-    }
-      collector.stop();
-      
-    })
-}
+      // - Logs de join
+                    let embed = new Discord.MessageEmbed()
+                    .setTitle(`Nouveau membre :`)
+                    .setDescription(`<:warn:716637815433199617> | ${member.user.tag} (${member.id}) viens de rejoindre le serveur ! Son compte a été créer le : \`${day}/${month}/${year}\` (${checkDays(member.guild.createdAt)})`)
+                    .setColor(`#ff4f02`)
+                    client.channels.cache.get(logsid).send(embed)
+                
 
-}); 
+                // Declaration du captcha
+                var captcha = captchagen.create();
+                captcha.text();
+                captcha.height();
+                captcha.width();  
+                captcha.generate();
+                let attachment = new Discord.MessageAttachment(captcha.buffer(), "captcha.png");
+                let filter = (m) => m.author.id === member.id,
+                opt = { max: 1, time: 120000, errors: [ "time" ] };
+                member.guild.channels.cache.forEach((channel) => {
+                    channel.updateOverwrite(member.id, {
+                        VIEW_CHANNEL: false,
+                    }).catch((err) => {});
+                });
+               channel.updateOverwrite(member.id, {
+                    VIEW_CHANNEL: true,
+                }).catch((err) => {});
+                let msg = await channel.send(`<:warn:716637815433199617> | Veuillez compléter le catpcha pour avoir accès au serveur ! *Vous avez **2 minutes !*** ${member}`, attachment)
+                
+                let collected = await channel.awaitMessages(filter, opt).catch(() => {});
+                if(!collected || !collected.first()) {
+                    msg.delete()
+                    member.kick("Captcha non rempli")
+                
+                        let embed = new Discord.MessageEmbed()
+                        .setTitle(`Captcha mal rempli :`)
+                        .setColor(`#ff0000`)
+                        .setDescription(`<:error:716095023971565679> ${member.user.tag} (${member.id}) viens d'être kick car il a mal/pas rempli son captcha !`)
+                        client.channels.cache.get(logsid).send(embed)
+                    
+                }
+                let messagecontent = collected.first().content;
+                collected.first().delete();
+
+                if(messagecontent.toLowerCase() === captcha.text()){
+                    msg.delete()
+                  
+                  
+                        let embed = new Discord.MessageEmbed()
+                        .setTitle(`Captcha rempli :`)
+                        .setColor(`#09ff00`)
+                        .setDescription(`${member.user.tag} (${member.id}) viens de remplir son captcha !`)
+                        client.channels.cache.get(logsid).send(embed)
+                    
+                    
+                        member.guild.channels.cache.forEach(channel => channel.updateOverwrite(member.id, { 
+                    VIEW_CHANNEL: null,}
+                ));
+                channel.updateOverwrite(member.id, {
+                    VIEW_CHANNEL: false,
+                }).catch((err) => {});
+                } else {
+                    msg.delete()
+                    member.kick("Captcha non rempli")
+            
+          
+                        let embed = new Discord.MessageEmbed()
+                        .setTitle(`Captcha mal rempli :`)
+                        .setColor(`#ff0000`)
+                        .setDescription(`<:error:716095023971565679> ${member.user.tag} (${member.id}) viens d'être kick car il a mal/pas rempli son captcha !`)
+                        client.channels.cache.get(logsid).send(embed)
+
+                    
+                  }
+
+                  });
 
 
 
